@@ -83,16 +83,14 @@ def compress_image_file(input_path: str, output_path: str):
         logging.error(f"Failed to process '{input_path}': {e}")
 
 
-def gather_image_files(root_dir: str):
+def gather_all_files(root_dir: str):
     """
-    Walks through root_dir recursively and collects all image file paths.
+    Walks through root_dir recursively and collects all file paths.
     """
     files = []
     for dirpath, _, filenames in os.walk(root_dir):
         for fname in filenames:
-            ext = os.path.splitext(fname)[1].lower()
-            if ext in IMAGE_EXTENSIONS:
-                files.append(os.path.join(dirpath, fname))
+            files.append(os.path.join(dirpath, fname))
     return files
 
 
@@ -101,26 +99,31 @@ def main():
         logging.error(f"Source directory '{SOURCE_DIR}' not found!")
         return
 
-    images = gather_image_files(SOURCE_DIR)
+    images = gather_all_files(SOURCE_DIR)
     if not images:
         logging.error(f"No images found in '{SOURCE_DIR}'.")
         return
 
     logging.info(f"Found {len(images)} images to compress.")
 
-    for src in tqdm(images, desc="Compressing images", unit="image"):
+    for src in tqdm(images, desc="Processing files", unit='file'):
         rel_dir = os.path.relpath(os.path.dirname(src), SOURCE_DIR)
         dest_dir = os.path.join(OUTPUT_DIR, rel_dir)
         os.makedirs(dest_dir, exist_ok=True)
 
-        base = os.path.splitext(os.path.basename(src))[0]
-        if TARGET_FORMAT:
-            ext = f".{TARGET_FORMAT.lower()}"
+        base, ext = os.path.splitext(os.path.basename(src))
+        ext_lower = ext.lower()
+        if ext_lower in IMAGE_EXTENSIONS:
+            if TARGET_FORMAT:
+                out_ext = f".{TARGET_FORMAT.lower()}"
+            else:
+                out_ext = ext_lower
+            dest_path = os.path.join(dest_dir, base + out_ext)
+            compress_image_file(src, dest_path)
         else:
-            ext = os.path.splitext(src)[1].lower()
-        dest_path = os.path.join(dest_dir, base + ext)
-
-        compress_image_file(src, dest_path)
+            dest_path = os.path.join(dest_dir, base + ext)
+            shutil.copy2(src, dest_path)
+            logging.info(f"Copied file {src} to {dest_path}")
 
     logging.info("All images processed.")
 
