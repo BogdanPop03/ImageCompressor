@@ -1,0 +1,129 @@
+import os
+import logging
+import shutil
+from PIL import Image
+from tqdm import tqdm
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+# Choose the output image format: "webp", "png", or None to keep original formats
+TARGET_FORMAT = None  # e.g. "webp" or "png", or None to preserve originals
+# Quality setting for JPEG and WebP (1-100). Lower -> smaller files.
+QUALITY = 85
+
+# Source and output directories
+SOURCE_DIR = "sourceImages"
+OUTPUT_DIR = "compressedImages"
+
+# Supported input image extensions
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"}
+
+# Mapping from file extension to PIL save format
+EXT_TO_FORMAT = {
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".png": "PNG",
+    ".bmp": "BMP",
+    ".gif": "GIF",
+    ".tiff": "TIFF",
+    ".webp": "WEBP",
+}
+
+
+def compress_image_file(input_path: str, output_path: str):
+    """
+    Opens an image from input_path, compresses it according to TARGET_FORMAT
+    or keeps the original format if TARGET_FORMAT is None, and saves it to output_path.
+    If the compressed file is larger than the original, the original is copied instead.
+    """
+    try:
+        img = Image.open(input_path)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # Determine save format and extension
+        if TARGET_FORMAT:
+            fmt = TARGET_FORMAT.upper()
+            out_ext = f".{TARGET_FORMAT.lower()}"
+        else:
+            out_ext = os.path.splitext(input_path)[1].lower()
+            fmt = EXT_TO_FORMAT.get(out_ext)
+            if fmt is None:
+                raise ValueError(f"Unsupported output format '{out_ext}'")
+
+        # Prepare save parameters
+        save_kwargs = {}
+        if fmt in ("WEBP", "JPEG"):
+            save_kwargs["quality"] = 70
+        if fmt == "PNG":
+            save_kwargs["optimize"] = True
+
+        # Save compressed image to a temporary path
+        temp_path = output_path + ".tmp"
+        img.save(temp_path, fmt, **save_kwargs)
+
+        orig_size = os.path.getsize(input_path)
+        comp_size = os.path.getsize(temp_path)
+
+        if comp_size < orig_size:
+            os.replace(temp_path, output_path)
+            logging.info(
+                f"Compressed and saved: {output_path} ({orig_size//1024}KB → {comp_size//1024}KB)")
+        else:
+            # If compression bloat, keep original
+            shutil.copy2(input_path, output_path)
+            os.remove(temp_path)
+            logging.warning(
+                f"Skipped compression for '{input_path}'; compressed size {comp_size//1024}KB > original {orig_size//1024}KB."
+            )
+    except Exception as e:
+        logging.error(f"Failed to process '{input_path}': {e}")
+
+
+def gather_image_files(root_dir: str):
+    """
+    Walks through root_dir recursively and collects all image file paths.
+    """
+    files = []
+    for dirpath, _, filenames in os.walk(root_dir):
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in IMAGE_EXTENSIONS:
+                files.append(os.path.join(dirpath, fname))
+    return files
+
+
+def main():
+    if not os.path.isdir(SOURCE_DIR):
+        logging.error(f"Source directory '{SOURCE_DIR}' not found!")
+        return
+
+    images = gather_image_files(SOURCE_DIR)
+    if not images:
+        logging.error(f"No images found in '{SOURCE_DIR}'.")
+        return
+
+    logging.info(f"Found {len(images)} images to compress.")
+
+    for src in tqdm(images, desc="Compressing images", unit="image"):
+        rel_dir = os.path.relpath(os.path.dirname(src), SOURCE_DIR)
+        dest_dir = os.path.join(OUTPUT_DIR, rel_dir)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        base = os.path.splitext(os.path.basename(src))[0]
+        if TARGET_FORMAT:
+            ext = f".{TARGET_FORMAT.lower()}"
+        else:
+            ext = os.path.splitext(src)[1].lower()
+        dest_path = os.path.join(dest_dir, base + ext)
+
+        compress_image_file(src, dest_path)
+
+    logging.info("All images processed.")
+
+
+if __name__ == "__main__":
+    main()
