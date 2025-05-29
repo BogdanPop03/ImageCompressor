@@ -12,8 +12,12 @@ logging.basicConfig(
 
 # Choose the output image format: "webp", "png", or None to keep original formats
 TARGET_FORMAT = None  # e.g. "webp" or "png", or None to preserve originals
-# Quality setting for JPEG and WebP (1-100). Lower -> smaller files.
+# Base quality setting for JPEG and WebP (1-100). Lower -> smaller files.
 QUALITY = 85
+# If a file is larger than this threshold (in bytes), apply more aggressive compression
+THRESHOLD = 1.2 * 1024 * 1024  # 1.2 MB in bytes
+# Additional drop in quality for large files
+AGGRESSIVE_DROP = 20  # decrease quality by 20 points for files > THRESHOLD
 
 # Source and output directories
 SOURCE_DIR = "sourceImages"
@@ -56,16 +60,25 @@ def compress_image_file(input_path: str, output_path: str):
 
         # Prepare save parameters
         save_kwargs = {}
+        orig_size = os.path.getsize(input_path)
+
+        # Determine quality based on file size
         if fmt in ("WEBP", "JPEG"):
-            save_kwargs["quality"] = 70
-        if fmt == "PNG":
+            # Use base QUALITY or more aggressive if above threshold
+            if orig_size > THRESHOLD:
+                q = max(1, QUALITY - AGGRESSIVE_DROP)
+                logging.info(
+                    f"Applying aggressive quality={q} for large file > {THRESHOLD//1024}KB")
+            else:
+                q = QUALITY
+            save_kwargs["quality"] = q
+        elif fmt == "PNG":
             save_kwargs["optimize"] = True
 
         # Save compressed image to a temporary path
         temp_path = output_path + ".tmp"
         img.save(temp_path, fmt, **save_kwargs)
 
-        orig_size = os.path.getsize(input_path)
         comp_size = os.path.getsize(temp_path)
 
         if comp_size < orig_size:
@@ -104,7 +117,7 @@ def main():
         logging.error(f"No images found in '{SOURCE_DIR}'.")
         return
 
-    logging.info(f"Found {len(images)} images to compress.")
+    logging.info(f"Found {len(images)} files to process.")
 
     for src in tqdm(images, desc="Processing files", unit='file'):
         rel_dir = os.path.relpath(os.path.dirname(src), SOURCE_DIR)
@@ -125,7 +138,7 @@ def main():
             shutil.copy2(src, dest_path)
             logging.info(f"Copied file {src} to {dest_path}")
 
-    logging.info("All images processed.")
+    logging.info("All files processed.")
 
 
 if __name__ == "__main__":
