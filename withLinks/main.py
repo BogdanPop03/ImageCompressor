@@ -95,7 +95,7 @@ def main():
         logging.error("No image data was extracted from the DOCX file.")
         return
 
-    base_dir = "images4"
+    base_dir = "images1"
     os.makedirs(base_dir, exist_ok=True)
 
     for category, urls in data.items():
